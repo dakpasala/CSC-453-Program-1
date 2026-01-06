@@ -79,9 +79,41 @@ void display_prompt(void) {
  * @param args Array to store parsed arguments
  * @return Number of arguments parsed
  */
+
+int special(char c) {
+    return c == '|' || c == '>';
+}
+
+// this is so leet code esque i love it
+
 int parse_input(char *input, char **args) {
-    /* TODO: Your implementation here */
-    return 0;
+    int index = 0;
+    int i = 0;
+
+    while (input[i] != '\0') {
+        while (input[i] == ' ' || input[i] == '\t' || input[i] == '\n') input[i++] = '\0';
+
+        if (input[i] == '\0') break;
+        if (special(input[i])) {
+            if (input[i] == '>' && input[i + 1] == '>') {
+                args[index++] = ">>";
+                i += 2;
+            } 
+            else {
+                char *op = &input[i];
+                input[i + 1] = '\0';
+                args[index++] = op;
+                i++;
+            }
+        }
+        else {
+            args[index++] = &input[i];
+            while (input[i] != '\0' && input[i] != ' ' && !special(input[i])) i++;
+        }
+    }
+
+    args[index] = NULL;
+    return index;
 }
 
 /**
