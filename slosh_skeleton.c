@@ -130,8 +130,96 @@ int parse_input(char *input, char **args) {
  * @param args Array of command arguments (NULL-terminated)
  */
 void execute_command(char **args) {
-    /* TODO: Your implementation here */
+    int i = 0;
+    int pipefd[2];
+    int prev = -1;
+    pid_t pid;
+    int status;
+
+    child_running = 1;
+
+    while (args[i] != NULL) {
+        char *cmd[MAX_ARGS];
+        int index = 0, out_fd = -1, append = 0;
+
+        while (args[i] != NULL && strcmp(args[i], "|") != 0) {
+            if (strcmp(args[i], ">") == 0 || strcmp(args[i], ">>") == 0) {
+                append = (args[i][1] == '>');
+                i++;
+                if (args[i] == NULL) break;
+
+                int flags = O_WRONLY | O_CREAT | (append ? O_APPEND : O_TRUNC);
+                out_fd = open(args[i], flags, 0644);
+                if (out_fd < 0) {
+                    perror("open");
+                    child_running = 0;
+                    return;
+                }
+                i++;
+            } 
+            else cmd[index++] = args[i++];
+        }
+
+        cmd[index] = NULL;
+        if (cmd[0] == NULL) {
+            child_running = 0;
+            return;
+        }
+
+        if (args[i] && strcmp(args[i], "|") == 0) i++;
+
+        if (args[i] != NULL && out_fd == -1) {
+            if (pipe(pipefd) < 0) {
+                perror("pipe");
+                child_running = 0;
+                return;
+            }
+        }
+
+        pid = fork();
+        if (pid == 0) {
+            signal(SIGINT, SIG_DFL);
+
+            if (prev != -1) {
+                dup2(prev, STDIN_FILENO);
+                close(prev);
+            }
+
+            if (args[i] != NULL && out_fd == -1) {
+                dup2(pipefd[1], STDOUT_FILENO);
+                close(pipefd[0]);
+                close(pipefd[1]);
+            }
+
+            if (out_fd != -1) {
+                dup2(out_fd, STDOUT_FILENO);
+                close(out_fd);
+            }
+
+            execvp(cmd[0], cmd);
+            perror("execvp");
+            exit(EXIT_FAILURE);
+        }
+
+        if (prev != -1) close(prev);
+        if (args[i] != NULL && out_fd == -1) {
+            close(pipefd[1]);
+            prev = pipefd[0];
+        }
+
+        if (out_fd != -1) close(out_fd);
+
+        if (args[i] == NULL) break;
+    }
+
+    while (waitpid(-1, &status, 0) > 0) {
+        if (WIFSIGNALED(status)) printf("terminated by signal %d\n", WTERMSIG(status));
+        else if (WIFEXITED(status) && WEXITSTATUS(status) != 0) printf("exit status %d\n", WEXITSTATUS(status));
+    }
+
+    child_running = 0;
 }
+
 
 /**
  * Check for and handle built-in commands
