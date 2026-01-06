@@ -39,7 +39,13 @@ void display_prompt(void);
  * Hint: The global variable tracks important state.
  */
 void sigint_handler(int sig) {
-    /* TODO: Your implementation here */
+    (void) sig;
+
+    if (child_running) return;
+    else {
+        const char line = '\n';
+        write(STDOUT_FILENO, &line, 1);
+    }
 }
 
 /**
