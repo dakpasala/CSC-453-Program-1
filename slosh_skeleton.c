@@ -232,8 +232,16 @@ void execute_command(char **args) {
  * @return 0 to exit shell, 1 to continue, -1 if not a built-in command
  */
 int handle_builtin(char **args) {
-    /* TODO: Your implementation here */
-    return -1;  /* Not a builtin command */
+    if (strcmp(args[0], "exit") == 0) return 0;
+    if (strcmp(args[0], "cd") == 0) {
+        if (args[1] == NULL) chdir(getenv("HOME"));
+        else {
+            if (chdir(args[1]) != 0) perror("cd");
+        }
+        return 1;
+    }
+
+    return -1;
 }
 
 int main(void) {
@@ -243,13 +251,18 @@ int main(void) {
     int builtin_result;
 
     /* TODO: Set up signal handling. Which signals matter to a shell? */
+    struct sigaction sa;
+    sa.sa_handler = sigint_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    sigaction(SIGINT, &sa, NULL);
 
     while (status) {
         display_prompt();
 
         /* Read input and handle signal interruption */
         if (fgets(input, MAX_INPUT_SIZE, stdin) == NULL) {
-            /* TODO: Handle the case when fgets returns NULL. When does this happen? */
+            if (feof(stdin)) break;
             break;
         }
 
