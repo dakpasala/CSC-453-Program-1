@@ -141,7 +141,11 @@ void execute_command(char **args) {
     while (args[i] != NULL) {
         char *cmd[MAX_ARGS];
         int index = 0, out_fd = -1, append = 0;
+        // out_fd mainly for tracking whether this command's output should go to a pipe or a file
 
+        // keep the append to ensure for truncating or appending to the file
+
+        // keep going until we hit a pipe, indicated by that | thingy
         while (args[i] != NULL && strcmp(args[i], "|") != 0) {
             if (strcmp(args[i], ">") == 0 || strcmp(args[i], ">>") == 0) {
                 append = (args[i][1] == '>');
@@ -149,14 +153,17 @@ void execute_command(char **args) {
                 if (args[i] == NULL) break;
 
                 int flags = O_WRONLY | O_CREAT | (append ? O_APPEND : O_TRUNC);
+                // append if we wanna either delete or append to existing files
                 out_fd = open(args[i], flags, 0644);
+
+                // error checks required
                 if (out_fd < 0) {
                     perror("open");
                     child_running = 0;
                     return;
                 }
                 i++;
-            } 
+            }
             else cmd[index++] = args[i++];
         }
 
@@ -167,7 +174,9 @@ void execute_command(char **args) {
         }
 
         if (args[i] && strcmp(args[i], "|") == 0) i++;
+        // don't put in the arguments and stuff
 
+        // have to create a pipe here because of how there's another command, the output isn't redirected to a file
         if (args[i] != NULL && out_fd == -1) {
             if (pipe(pipefd) < 0) {
                 perror("pipe");
@@ -176,26 +185,51 @@ void execute_command(char **args) {
             }
         }
 
+        // will only happen when there isn't a > or >> this is correct behavior
+
         pid = fork();
+        if (pid < 0) {
+            perror("fork");
+            child_running = 0;
+            return;
+        }
+
         if (pid == 0) {
+            // ctrl+c will now kill the child, but not the shell
             signal(SIGINT, SIG_DFL);
 
+            // if prev isn't -1 this means that it holds the read end of the previous pipe, so we can start passing info i think
+            // yeah read from previous pipe instead of terminal
             if (prev != -1) {
-                dup2(prev, STDIN_FILENO);
+                if (dup2(prev, STDIN_FILENO) < 0) {
+                    perror("dup2");
+                    exit(EXIT_FAILURE);
+                }
                 close(prev);
             }
 
             if (args[i] != NULL && out_fd == -1) {
-                dup2(pipefd[1], STDOUT_FILENO);
+                // output is written into the pipe to be placed onto the terminal
+                if (dup2(pipefd[1], STDOUT_FILENO) < 0) {
+                    perror("dup2");
+                    exit(EXIT_FAILURE);
+                }
                 close(pipefd[0]);
                 close(pipefd[1]);
             }
 
             if (out_fd != -1) {
-                dup2(out_fd, STDOUT_FILENO);
+                // redirected to the file now
+                if (dup2(out_fd, STDOUT_FILENO) < 0) {
+                    perror("dup2");
+                    exit(EXIT_FAILURE);
+                }
                 close(out_fd);
             }
 
+            // replace the child process
+            // load the actual program
+            // won't return on success like quiz says
             execvp(cmd[0], cmd);
             perror("execvp");
             exit(EXIT_FAILURE);
@@ -212,9 +246,19 @@ void execute_command(char **args) {
         if (args[i] == NULL) break;
     }
 
-    while (waitpid(-1, &status, 0) > 0) {
-        if (WIFSIGNALED(status)) printf("terminated by signal %d\n", WTERMSIG(status));
-        else if (WIFEXITED(status) && WEXITSTATUS(status) != 0) printf("exit status %d\n", WEXITSTATUS(status));
+    while (1) {
+        pid_t w = waitpid(-1, &status, 0);
+        if (w > 0) {
+            if (WIFSIGNALED(status))
+                printf("terminated by signal %d\n", WTERMSIG(status));
+            else if (WIFEXITED(status) && WEXITSTATUS(status) != 0)
+                printf("exit status %d\n", WEXITSTATUS(status));
+        } 
+        else {
+            if (errno == ECHILD) break;
+            perror("waitpid");
+            break;
+        }
     }
 
     child_running = 0;
