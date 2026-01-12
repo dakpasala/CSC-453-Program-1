@@ -123,12 +123,12 @@ int parse_input(char *input, char **args) {
 
     args[arg_i] = NULL;
 
-    // Debug print of args array
-    printf("ARGS: ");
-    for (int j = 0; j < arg_i; j++) {
-        printf("[%s] ", args[j]);
-    }
-    printf("\n");
+    // // Debug print of args array
+    // printf("ARGS: ");
+    // for (int j = 0; j < arg_i; j++) {
+    //     printf("[%s] ", args[j]);
+    // }
+    // printf("\n");
 
     return arg_i;
 }
