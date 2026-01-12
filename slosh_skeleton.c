@@ -84,36 +84,53 @@ int special(char c) {
     return c == '|' || c == '>';
 }
 
-// this is so leet code esque i love it
+// this is so leet code esque i love it (2 pointers!)
 
 int parse_input(char *input, char **args) {
-    int index = 0;
-    int i = 0;
+    int arg_i = 0;
+    int in_i = 0;
 
-    while (input[i] != '\0') {
-        while (input[i] == ' ' || input[i] == '\t' || input[i] == '\n') input[i++] = '\0';
+    while (input[in_i] != '\0') {
+        // Skip whitespace
+        while (input[in_i] == ' ' || input[in_i] == '\t' || input[in_i] == '\n') in_i++;
+        if (input[in_i] == '\0') break;
 
-        if (input[i] == '\0') break;
-        if (special(input[i])) {
-            if (input[i] == '>' && input[i + 1] == '>') {
-                args[index++] = ">>";
-                i += 2;
-            } 
-            else {
-                char *op = &input[i];
-                input[i + 1] = '\0';
-                args[index++] = op;
-                i++;
+        // Handle special tokens
+        if (special(input[in_i])) {
+            if (input[in_i] == '>' && input[in_i + 1] == '>') {
+                args[arg_i] = malloc(3);
+                strcpy(args[arg_i], ">>");
+                arg_i++;
+                in_i += 2;
+            } else {
+                args[arg_i] = malloc(2);
+                args[arg_i][0] = input[in_i];
+                args[arg_i][1] = '\0';
+                arg_i++;
+                in_i++;
             }
-        }
-        else {
-            args[index++] = &input[i];
-            while (input[i] != '\0' && input[i] != ' ' && !special(input[i])) i++;
+        } else {
+            // Handle regular tokens (alphanumeric and others)
+            int start = in_i;
+            while (input[in_i] != '\0' && !special(input[in_i]) && input[in_i] != ' ' && input[in_i] != '\t' && input[in_i] != '\n') in_i++;
+            int len = in_i - start;
+            args[arg_i] = malloc(len + 1);
+            strncpy(args[arg_i], &input[start], len);
+            args[arg_i][len] = '\0';
+            arg_i++;
         }
     }
 
-    args[index] = NULL;
-    return index;
+    args[arg_i] = NULL;
+
+    // Debug print of args array
+    printf("ARGS: ");
+    for (int j = 0; j < arg_i; j++) {
+        printf("[%s] ", args[j]);
+    }
+    printf("\n");
+
+    return arg_i;
 }
 
 /**
@@ -305,6 +322,7 @@ int main(void) {
         display_prompt();
 
         /* Read input and handle signal interruption */
+        // Close shell on EOF (Ctrl+D) or error
         if (fgets(input, MAX_INPUT_SIZE, stdin) == NULL) {
             if (feof(stdin)) break;
             break;
@@ -327,6 +345,11 @@ int main(void) {
 
         /* Execute external command */
         execute_command(args);
+
+        // Free each allocated string in args
+        for (int i = 0; i < MAX_ARGS && args[i] != NULL; i++) {
+            free(args[i]);
+        }
     }
 
     printf("SLOsh exiting...\n");
