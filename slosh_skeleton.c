@@ -154,7 +154,7 @@ void execute_command(char **args) {
     int status;
 
     child_running = 1;
-
+    // TODO: Edge case handling specifically for invalid commands like "| cmd" or "cmd | | cmd" or "a > | > b"
     while (args[i] != NULL) {
         char *cmd[MAX_ARGS];
         int index = 0, out_fd = -1, append = 0;
@@ -184,6 +184,7 @@ void execute_command(char **args) {
             else cmd[index++] = args[i++];
         }
 
+        // Null terminate the cmd array and check for empty command
         cmd[index] = NULL;
         if (cmd[0] == NULL) {
             child_running = 0;
@@ -193,7 +194,7 @@ void execute_command(char **args) {
         if (args[i] && strcmp(args[i], "|") == 0) i++;
         // don't put in the arguments and stuff
 
-        // have to create a pipe here because of how there's another command, the output isn't redirected to a file
+        // More commands to process proceeding a pipe AND no output redirection
         if (args[i] != NULL && out_fd == -1) {
             if (pipe(pipefd) < 0) {
                 perror("pipe");
@@ -202,8 +203,6 @@ void execute_command(char **args) {
             }
         }
 
-        // will only happen when there isn't a > or >> this is correct behavior
-
         pid = fork();
         if (pid < 0) {
             perror("fork");
@@ -211,22 +210,13 @@ void execute_command(char **args) {
             return;
         }
 
+        // Child process
         if (pid == 0) {
             // ctrl+c will now kill the child, but not the shell
             signal(SIGINT, SIG_DFL);
 
-            // if prev isn't -1 this means that it holds the read end of the previous pipe, so we can start passing info i think
-            // yeah read from previous pipe instead of terminal
-            if (prev != -1) {
-                if (dup2(prev, STDIN_FILENO) < 0) {
-                    perror("dup2");
-                    exit(EXIT_FAILURE);
-                }
-                close(prev);
-            }
-
+            // Case: Left hand side of a pipe (setup write end of pipe)
             if (args[i] != NULL && out_fd == -1) {
-                // output is written into the pipe to be placed onto the terminal
                 if (dup2(pipefd[1], STDOUT_FILENO) < 0) {
                     perror("dup2");
                     exit(EXIT_FAILURE);
@@ -235,8 +225,18 @@ void execute_command(char **args) {
                 close(pipefd[1]);
             }
 
+            // Case: Right hand side of a pipe (setup read end of pipe)
+            if (prev != -1) {
+                if (dup2(prev, STDIN_FILENO) < 0) {
+                    perror("dup2");
+                    exit(EXIT_FAILURE);
+                }
+                // closing prev fd doesn't close STDIN_FILENO bc dup2 made a copy
+                close(prev);
+            }
+            
+            // Case: Output redirection to a file, dupe output fd to current process STDOUT
             if (out_fd != -1) {
-                // redirected to the file now
                 if (dup2(out_fd, STDOUT_FILENO) < 0) {
                     perror("dup2");
                     exit(EXIT_FAILURE);
@@ -247,20 +247,25 @@ void execute_command(char **args) {
             // replace the child process
             // load the actual program
             // won't return on success like quiz says
-            execvp(cmd[0], cmd);
+            execvp(cmd[0], cmd); // execute command and pass argv
             perror("execvp");
             exit(EXIT_FAILURE);
+        } else {
+            // Cleanup file descriptors in shell (parent process)
+            
+            // Close shell read end of previous pipe (already duped a right-hand child)
+            if (prev != -1) close(prev);
+
+            // More commands to process
+            if (args[i] != NULL && out_fd == -1) {
+                // Left hand child is writing to "shell" which will redirect to next command using prev
+                close(pipefd[1]);
+                prev = pipefd[0];
+            }
+            
+            // Cleanup output redirection fd
+            if (out_fd != -1) close(out_fd);
         }
-
-        if (prev != -1) close(prev);
-        if (args[i] != NULL && out_fd == -1) {
-            close(pipefd[1]);
-            prev = pipefd[0];
-        }
-
-        if (out_fd != -1) close(out_fd);
-
-        if (args[i] == NULL) break;
     }
 
     while (1) {
