@@ -45,6 +45,7 @@ void sigint_handler(int sig) {
     else {
         const char line = '\n';
         write(STDOUT_FILENO, &line, 1);
+        display_prompt();
     }
 }
 
