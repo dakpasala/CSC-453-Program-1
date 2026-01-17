@@ -331,8 +331,9 @@ int main(void) {
         // Close shell on EOF (Ctrl+D) or error
         if (fgets(input, MAX_INPUT_SIZE, stdin) == NULL) {
             if (feof(stdin)) break;
-            break;
+            continue;
         }
+
 
         /* Parse input */
         parse_input(input, args);
